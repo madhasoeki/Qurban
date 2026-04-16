@@ -241,7 +241,7 @@ new #[Layout('layouts.dashboard')] #[Title('Dashboard')] class extends Component
     }
 }; ?>
 
-<section class="w-full space-y-6" wire:poll.1s x-data="dashboardDurations">
+<section class="w-full space-y-6 p-0 lg:p-10" x-data="dashboardDurations" x-on:dashboard-data-updated.window="$wire.$refresh()">
     <div class="flex flex-col gap-2 sm:flex-row sm:items-end sm:justify-between">
         <div>
             <flux:heading size="xl">Dashboard Qurban Bahagia 2026</flux:heading>
@@ -265,7 +265,7 @@ new #[Layout('layouts.dashboard')] #[Title('Dashboard')] class extends Component
             <flux:subheading size="xl">Progress Qurban</flux:subheading>
             <div class="mt-2 flex flex-col items-center gap-4 sm:flex-row sm:items-center">
                 <div class="relative aspect-square w-full max-w-63 shrink-0 rounded-full" style="background: conic-gradient(#22c55e {{ $progressQurbanPercent }}%, #e4e4e7 0%);">
-                    <div class="absolute inset-6 grid place-content-center rounded-full bg-white text-sm font-semibold text-zinc-700 dark:bg-zinc-900 dark:text-zinc-200">
+                    <div class="absolute inset-6 grid place-content-center rounded-full bg-white text-3xl font-semibold text-zinc-700 dark:bg-zinc-900 dark:text-zinc-200">
                         {{ $progressQurbanPercent }}%
                     </div>
                 </div>

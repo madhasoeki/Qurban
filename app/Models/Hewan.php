@@ -2,6 +2,7 @@
 
 namespace App\Models;
 
+use App\Events\DashboardUpdated;
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\Relations\BelongsTo;
 
@@ -45,6 +46,12 @@ class Hewan extends Model
         'mulai_packing' => 'datetime',
         'selesai_packing' => 'datetime',
     ];
+
+    protected static function booted(): void
+    {
+        static::saved(fn () => DashboardUpdated::dispatch());
+        static::deleted(fn () => DashboardUpdated::dispatch());
+    }
 
     public function sohibul(): BelongsTo
     {

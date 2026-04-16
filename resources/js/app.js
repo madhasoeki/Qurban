@@ -53,3 +53,19 @@ document.addEventListener("alpine:init", () => {
         },
     }));
 });
+
+/**
+ * Echo exposes an expressive API for subscribing to channels and listening
+ * for events that are broadcast by Laravel. Echo and event broadcasting
+ * allow your team to quickly build robust real-time web applications.
+ */
+
+import "./echo";
+
+if (window.Echo && !window.__dashboardEchoBound) {
+    window.__dashboardEchoBound = true;
+
+    window.Echo.channel("dashboard").listen(".dashboard.updated", () => {
+        window.dispatchEvent(new CustomEvent("dashboard-data-updated"));
+    });
+}
