@@ -13,6 +13,35 @@
                 <flux:navbar.item icon="layout-grid" :href="route('dashboard')" :current="request()->routeIs('dashboard')" wire:navigate>
                     {{ __('Dashboard') }}
                 </flux:navbar.item>
+
+                @if (auth()->user()->hasRole('admin'))
+                    <flux:navbar.item icon="users" :href="route('users.index')" :current="request()->routeIs('users.index')" wire:navigate>
+                        {{ __('Users') }}
+                    </flux:navbar.item>
+
+                    <flux:navbar.item icon="user-group" :href="route('sohibul.index')" :current="request()->routeIs('sohibul.index')" wire:navigate>
+                        {{ __('Sohibul') }}
+                    </flux:navbar.item>
+                @endif
+
+                @if (auth()->user()->hasAnyRole(['admin', 'jagal']))
+                    <flux:navbar.item icon="scissors" :href="route('workflow.jagal')" :current="request()->routeIs('workflow.jagal')" wire:navigate>
+                        {{ __('Jagal') }}
+                    </flux:navbar.item>
+                @endif
+
+                @if (auth()->user()->hasAnyRole(['admin', 'kuliti']))
+                    <flux:navbar.item icon="sparkles" :href="route('workflow.kuliti')" :current="request()->routeIs('workflow.kuliti')" wire:navigate>
+                        {{ __('Kuliti') }}
+                    </flux:navbar.item>
+                @endif
+
+                @if (auth()->user()->hasAnyRole(['admin', 'distribusi']))
+                    <flux:navbar.item icon="truck" :href="route('workflow.distribusi')" :current="request()->routeIs('workflow.distribusi')" wire:navigate>
+                        {{ __('Distribusi') }}
+                    </flux:navbar.item>
+                @endif
+
             </flux:navbar>
 
             <flux:spacer />
@@ -56,6 +85,34 @@
                     <flux:sidebar.item icon="layout-grid" :href="route('dashboard')" :current="request()->routeIs('dashboard')" wire:navigate>
                         {{ __('Dashboard')  }}
                     </flux:sidebar.item>
+
+                    @if (auth()->user()->hasRole('admin'))
+                        <flux:sidebar.item icon="users" :href="route('users.index')" :current="request()->routeIs('users.index')" wire:navigate>
+                            {{ __('Users') }}
+                        </flux:sidebar.item>
+
+                        <flux:sidebar.item icon="user-group" :href="route('sohibul.index')" :current="request()->routeIs('sohibul.index')" wire:navigate>
+                            {{ __('Sohibul') }}
+                        </flux:sidebar.item>
+                    @endif
+
+                    @if (auth()->user()->hasAnyRole(['admin', 'jagal']))
+                        <flux:sidebar.item icon="scissors" :href="route('workflow.jagal')" :current="request()->routeIs('workflow.jagal')" wire:navigate>
+                            {{ __('Jagal') }}
+                        </flux:sidebar.item>
+                    @endif
+
+                    @if (auth()->user()->hasAnyRole(['admin', 'kuliti']))
+                        <flux:sidebar.item icon="sparkles" :href="route('workflow.kuliti')" :current="request()->routeIs('workflow.kuliti')" wire:navigate>
+                            {{ __('Kuliti') }}
+                        </flux:sidebar.item>
+                    @endif
+
+                    @if (auth()->user()->hasAnyRole(['admin', 'distribusi']))
+                        <flux:sidebar.item icon="truck" :href="route('workflow.distribusi')" :current="request()->routeIs('workflow.distribusi')" wire:navigate>
+                            {{ __('Distribusi') }}
+                        </flux:sidebar.item>
+                    @endif
                 </flux:sidebar.group>
             </flux:sidebar.nav>
 

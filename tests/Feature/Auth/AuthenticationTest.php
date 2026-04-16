@@ -23,7 +23,7 @@ class AuthenticationTest extends TestCase
         $user = User::factory()->create();
 
         $response = $this->post(route('login.store'), [
-            'email' => $user->email,
+            'name' => $user->name,
             'password' => 'password',
         ]);
 
@@ -39,11 +39,30 @@ class AuthenticationTest extends TestCase
         $user = User::factory()->create();
 
         $response = $this->post(route('login.store'), [
-            'email' => $user->email,
+            'name' => $user->name,
             'password' => 'wrong-password',
         ]);
 
-        $response->assertSessionHasErrorsIn('email');
+        $response->assertSessionHasErrorsIn('name');
+
+        $this->assertGuest();
+    }
+
+    public function test_failed_login_keeps_original_username_casing_in_old_input(): void
+    {
+        User::factory()->create(['name' => 'PanitiaUtama']);
+
+        $typedName = 'PanitiaUtama';
+
+        $response = $this->from(route('login'))->post(route('login.store'), [
+            'name' => $typedName,
+            'password' => 'wrong-password',
+        ]);
+
+        $response
+            ->assertRedirect(route('login'))
+            ->assertSessionHasErrorsIn('name')
+            ->assertSessionHasInput('name', $typedName);
 
         $this->assertGuest();
     }
@@ -60,7 +79,7 @@ class AuthenticationTest extends TestCase
         $user = User::factory()->withTwoFactor()->create();
 
         $response = $this->post(route('login.store'), [
-            'email' => $user->email,
+            'name' => $user->name,
             'password' => 'password',
         ]);
 
