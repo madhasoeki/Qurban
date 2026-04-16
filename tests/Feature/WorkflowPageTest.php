@@ -2,6 +2,7 @@
 
 namespace Tests\Feature;
 
+use App\Models\Distribusi;
 use App\Models\Hewan;
 use App\Models\Sohibul;
 use App\Models\User;
@@ -50,7 +51,7 @@ class WorkflowPageTest extends TestCase
         $this->get(route('workflow.kuliti'))->assertForbidden();
     }
 
-    public function test_distribusi_updates_bags_without_workflow_timestamps(): void
+    public function test_distribusi_updates_global_bags_without_changing_workflow_data(): void
     {
         $distribusiRole = Role::query()->firstOrCreate(['name' => 'distribusi']);
 
@@ -84,14 +85,16 @@ class WorkflowPageTest extends TestCase
         $this->actingAs($user);
 
         Livewire::test('pages::hewan.distribusi')
-            ->set('distribusiBags.'.$hewan->id, 20)
-            ->call('updateDistribusi', $hewan->id)
+            ->set('jumlahByUser.'.$user->id, 20)
+            ->call('updateJumlah', $user->id)
             ->assertHasNoErrors();
 
-        $hewan->refresh();
+        $distribusi = Distribusi::query()->where('user_id', $user->id)->first();
 
-        $this->assertSame(20, $hewan->kantong_distribusi);
-        $this->assertSame(1, $hewan->distribusi);
+        $this->assertNotNull($distribusi);
+        $this->assertSame(20, $distribusi->jumlah);
+
+        $hewan->refresh();
         $this->assertNotNull($hewan->selesai_packing);
     }
 }

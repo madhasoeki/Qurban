@@ -54,7 +54,6 @@ class HewanController extends Controller
             'mulai_packing' => 'nullable|date',
             'selesai_packing' => 'nullable|date',
             'total_kantong' => 'integer',
-            'distribusi' => 'integer',
             'sohibul_id' => 'sometimes|required|exists:sohibul,id',
         ]);
 

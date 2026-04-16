@@ -1,100 +1,140 @@
 <?php
 
-use App\Models\Hewan;
+use App\Models\Distribusi;
+use App\Models\User;
+use Carbon\Carbon;
 use Flux\Flux;
 use Livewire\Attributes\Layout;
 use Livewire\Attributes\Title;
 use Livewire\Component;
-use Livewire\WithPagination;
 
-new #[Layout('layouts.dashboard')] #[Title('Distribusi')] class extends Component {
-    use WithPagination;
-
-    public string $search = '';
-
-    public string $jenisQurbanFilter = 'all';
-
+new #[Layout('layouts.dashboard')] #[Title('Distribusi')] class extends Component
+{
     /** @var array<int, int|string> */
-    public array $distribusiBags = [];
+    public array $jumlahByUser = [];
 
     public function mount(): void
     {
-        //
+        $this->syncCounters();
     }
 
-    public function updatedSearch(): void
+    public function increment(int $userId): void
     {
-        $this->resetPage();
+        if (! $this->canManageUserCounter($userId)) {
+            return;
+        }
+
+        $current = (int) ($this->jumlahByUser[$userId] ?? 0);
+        $this->jumlahByUser[$userId] = $current + 1;
+
+        $this->persistJumlahForUser($userId);
     }
 
-    public function updatedJenisQurbanFilter(): void
+    public function decrement(int $userId): void
     {
-        $this->resetPage();
+        if (! $this->canManageUserCounter($userId)) {
+            return;
+        }
+
+        $current = (int) ($this->jumlahByUser[$userId] ?? 0);
+        $this->jumlahByUser[$userId] = max(0, $current - 1);
+
+        $this->persistJumlahForUser($userId);
     }
 
-    public function updateDistribusi(int $hewanId): void
+    public function updateJumlah(int $userId): void
     {
-        $hewan = Hewan::query()->findOrFail($hewanId);
-        $bags = (int) ($this->distribusiBags[$hewan->id] ?? 0);
+        if (! $this->canManageUserCounter($userId)) {
+            return;
+        }
 
-        if ($bags < 0) {
-            $this->addError('distribusiBags.'.$hewan->id, __('Jumlah kantong distribusi tidak boleh negatif.'));
+        $validated = $this->validate([
+            'jumlahByUser.'.$userId => ['required', 'integer', 'min:0'],
+        ]);
+
+        $this->jumlahByUser[$userId] = (int) ($validated['jumlahByUser'][$userId] ?? 0);
+        $this->persistJumlahForUser($userId);
+    }
+
+    private function persistJumlahForUser(int $userId): void
+    {
+        $jumlah = (int) ($this->jumlahByUser[$userId] ?? 0);
+
+        if ($jumlah < 0) {
+            $this->addError('jumlahByUser.'.$userId, 'Jumlah kantong distribusi tidak boleh negatif.');
 
             return;
         }
 
-        $hewan->update([
-            'kantong_distribusi' => $bags,
-            'distribusi' => $bags > 0 ? 1 : 0,
-        ]);
+        Distribusi::query()->updateOrCreate(
+            ['user_id' => $userId],
+            ['jumlah' => $jumlah]
+        );
 
-        Flux::toast(variant: 'success', text: __('Distribusi berhasil diperbarui.'));
+        Flux::toast(variant: 'success', text: 'Distribusi berhasil diperbarui.');
+    }
+
+    private function syncCounters(): void
+    {
+        $distributorIds = $this->visibleDistributorUsers()->pluck('id');
+
+        foreach ($distributorIds as $userId) {
+            $counter = Distribusi::query()->firstOrCreate(['user_id' => $userId], ['jumlah' => 0]);
+
+            if (! array_key_exists($userId, $this->jumlahByUser)) {
+                $this->jumlahByUser[$userId] = (int) $counter->jumlah;
+            }
+        }
+
+        $this->jumlahByUser = array_intersect_key($this->jumlahByUser, array_flip($distributorIds->all()));
+    }
+
+    private function visibleDistributorUsers()
+    {
+        $currentUser = auth()->user();
+
+        $query = User::query()
+            ->role('distribusi')
+            ->orderBy('name');
+
+        if ($currentUser && ! $currentUser->hasRole('admin')) {
+            $query->whereKey($currentUser->id);
+        }
+
+        return $query->get(['id', 'name']);
+    }
+
+    public function canManageUserCounter(int $userId): bool
+    {
+        $user = auth()->user();
+
+        if (! $user) {
+            return false;
+        }
+
+        return $user->hasRole('admin') || (int) $user->id === $userId;
     }
 
     public function with(): array
     {
-        $hewanItems = Hewan::query()
-            ->with('sohibul:id,nama,jenis_qurban')
-            ->whereNotNull('selesai_jagal')
-            ->when($this->jenisQurbanFilter !== 'all', fn ($query) => $query->whereHas('sohibul', fn ($relation) => $relation->where('jenis_qurban', $this->jenisQurbanFilter)))
-            ->when($this->search, fn ($query) => $query->where('kode', 'like', '%'.$this->search.'%'))
-            ->latest('id')
-            ->paginate(12);
+        $this->syncCounters();
 
-        foreach ($hewanItems as $hewan) {
-            $this->distribusiBags[$hewan->id] = $this->distribusiBags[$hewan->id] ?? $hewan->kantong_distribusi;
-        }
+        $distributorUsers = $this->visibleDistributorUsers();
+
+        $totalDistribusi = Distribusi::query()
+            ->sum('jumlah');
+
+        $lastUpdatedAt = Distribusi::query()
+            ->whereIn('user_id', $distributorUsers->pluck('id'))
+            ->max('updated_at');
 
         return [
-            'pageTitle' => __('Distribusi'),
-            'hewanItems' => $hewanItems,
+            'pageTitle' => 'Distribusi',
+            'distributorUsers' => $distributorUsers,
+            'totalDistribusi' => (int) $totalDistribusi,
             'nowLabel' => now()->format('H:i:s'),
+            'lastUpdatedAt' => $lastUpdatedAt ? Carbon::parse($lastUpdatedAt)->format('d M Y H:i:s') : '-',
         ];
-    }
-
-    public function statusLabel(Hewan $hewan): string
-    {
-        if ((int) $hewan->distribusi === 1) {
-            return 'Selesai - '.$hewan->kantong_distribusi.' Kantong';
-        }
-
-        return 'Belum';
-    }
-
-    /**
-     * @return array<int, string>
-     */
-    public function hewanSohibulNames(Hewan $hewan): array
-    {
-        if (is_array($hewan->sohibul?->nama)) {
-            return array_values(array_filter($hewan->sohibul->nama, fn ($name) => filled($name)));
-        }
-
-        if (filled($hewan->sohibul?->nama)) {
-            return [(string) $hewan->sohibul->nama];
-        }
-
-        return [];
     }
 }; ?>
 
@@ -102,105 +142,65 @@ new #[Layout('layouts.dashboard')] #[Title('Distribusi')] class extends Componen
     <div class="flex flex-col gap-2 sm:flex-row sm:items-end sm:justify-between">
         <div>
             <flux:heading size="xl">{{ $pageTitle }}</flux:heading>
-            <flux:subheading>{{ __('Pantau dan update proses distribusi secara realtime.') }}</flux:subheading>
+            <flux:subheading>Update jumlah kantong distribusi secara realtime.</flux:subheading>
         </div>
-        <flux:text class="text-xs text-zinc-500 dark:text-zinc-400">{{ __('Last updated at') }}: {{ $nowLabel }}</flux:text>
+        <flux:text class="text-xs text-zinc-500 dark:text-zinc-400">Last updated at: {{ $nowLabel }}</flux:text>
     </div>
 
-    <div class="flex flex-col gap-3 md:flex-row md:items-end">
-        <flux:input wire:model.live="search" icon="magnifying-glass" :placeholder="__('Cari kode hewan...')" class="md:max-w-sm" />
+    <div class="mx-auto max-w-2xl rounded-xl border border-zinc-200 bg-white p-6 dark:border-zinc-700 dark:bg-zinc-900">
+        <div class="text-center">
+            <flux:subheading size="lg">Total Kantong Terdistribusi</flux:subheading>
+            <flux:heading size="xl" class="mt-2">{{ number_format($totalDistribusi) }} Kantong</flux:heading>
+            <flux:text class="mt-1 text-xs text-zinc-500 dark:text-zinc-400">Record updated: {{ $lastUpdatedAt }}</flux:text>
+        </div>
 
-        <flux:select wire:model.live="jenisQurbanFilter" class="md:max-w-xs" :label="__('Filter Jenis Qurban')">
-            <option value="all">Semua</option>
-            <option value="sapi">Sapi</option>
-            <option value="kambing">Kambing</option>
-        </flux:select>
-    </div>
-
-    <div class="space-y-3 md:hidden">
-        @forelse ($hewanItems as $hewan)
-            <article class="space-y-3 rounded-lg border border-zinc-200 bg-white p-4 dark:border-zinc-700 dark:bg-zinc-900">
-                <div class="flex items-start justify-between gap-3">
-                    <div>
-                        <flux:subheading class="text-zinc-500">{{ __('Kode') }}</flux:subheading>
-                        <flux:heading size="lg">{{ $hewan->kode }}</flux:heading>
+        <div class="mt-6 space-y-3">
+            @forelse ($distributorUsers as $distributor)
+                <div class="rounded-lg border border-zinc-200 px-4 py-3 dark:border-zinc-700">
+                    <div class="mb-2 flex items-center justify-between gap-3">
+                        <flux:text class="font-medium">{{ $distributor->name }}</flux:text>
+                        <flux:badge>{{ number_format((int) ($jumlahByUser[$distributor->id] ?? 0)) }} Kantong</flux:badge>
                     </div>
-                    <flux:badge size="sm">{{ $this->statusLabel($hewan) }}</flux:badge>
+
+                    <div class="flex items-center gap-2">
+                        <flux:button
+                            variant="ghost"
+                            icon="minus"
+                            wire:click="decrement({{ $distributor->id }})"
+                            :disabled="! $this->canManageUserCounter($distributor->id)"
+                        ></flux:button>
+
+                        <flux:input
+                            type="number"
+                            min="0"
+                            wire:model.blur="jumlahByUser.{{ $distributor->id }}"
+                            class="w-full text-center"
+                            :disabled="! $this->canManageUserCounter($distributor->id)"
+                        />
+
+                        <flux:button
+                            variant="primary"
+                            icon="plus"
+                            wire:click="increment({{ $distributor->id }})"
+                            :disabled="! $this->canManageUserCounter($distributor->id)"
+                        ></flux:button>
+
+                        <flux:button
+                            variant="primary"
+                            wire:click="updateJumlah({{ $distributor->id }})"
+                            :disabled="! $this->canManageUserCounter($distributor->id)"
+                        >Update</flux:button>
+                    </div>
+
+                    @error('jumlahByUser.'.$distributor->id)
+                        <flux:text class="mt-2 block text-sm text-red-500">{{ $message }}</flux:text>
+                    @enderror
                 </div>
-
-                <div>
-                    <flux:subheading class="mb-1 text-zinc-500">{{ __('Sohibul') }}</flux:subheading>
-                    @php($names = $this->hewanSohibulNames($hewan))
-
-                    @if (count($names) > 1)
-                        <ol class="list-decimal pl-4 text-sm">
-                            @foreach ($names as $name)
-                                <li>{{ $name }}</li>
-                            @endforeach
-                        </ol>
-                    @elseif (count($names) === 1)
-                        <flux:text>{{ $names[0] }}</flux:text>
-                    @else
-                        <flux:text>-</flux:text>
-                    @endif
+            @empty
+                <div class="rounded-lg border border-zinc-200 px-4 py-6 text-center text-zinc-500 dark:border-zinc-700 dark:text-zinc-400">
+                    Belum ada user dengan role distribusi.
                 </div>
-
-                <div class="space-y-2">
-                    <flux:input type="number" wire:model="distribusiBags.{{ $hewan->id }}" min="0" :label="__('Jumlah Kantong')" />
-                    <flux:button size="sm" variant="primary" class="w-full" wire:click="updateDistribusi({{ $hewan->id }})">{{ __('Simpan') }}</flux:button>
-                </div>
-            </article>
-        @empty
-            <div class="rounded-lg border border-zinc-200 px-4 py-6 text-center text-zinc-500 dark:border-zinc-700 dark:text-zinc-400">
-                {{ __('Belum ada data untuk tahap ini.') }}
-            </div>
-        @endforelse
-
-        {{ $hewanItems->links() }}
-    </div>
-
-    <div class="hidden md:block">
-        <flux:table :paginate="$hewanItems">
-            <flux:table.columns>
-                <flux:table.column>{{ __('Kode') }}</flux:table.column>
-                <flux:table.column>{{ __('Sohibul') }}</flux:table.column>
-                <flux:table.column>{{ __('Status Distribusi') }}</flux:table.column>
-                <flux:table.column>{{ __('Jumlah Kantong') }}</flux:table.column>
-                <flux:table.column>{{ __('Aksi') }}</flux:table.column>
-            </flux:table.columns>
-            <flux:table.rows>
-                @forelse ($hewanItems as $hewan)
-                    <flux:table.row :key="'distribusi-hewan-'.$hewan->id">
-                        <flux:table.cell>{{ $hewan->kode }}</flux:table.cell>
-                        <flux:table.cell>
-                            @php($names = $this->hewanSohibulNames($hewan))
-
-                            @if (count($names) > 1)
-                                <ol class="list-decimal pl-4">
-                                    @foreach ($names as $name)
-                                        <li>{{ $name }}</li>
-                                    @endforeach
-                                </ol>
-                            @elseif (count($names) === 1)
-                                {{ $names[0] }}
-                            @else
-                                -
-                            @endif
-                        </flux:table.cell>
-                        <flux:table.cell>{{ $this->statusLabel($hewan) }}</flux:table.cell>
-                        <flux:table.cell>
-                            <flux:input type="number" wire:model="distribusiBags.{{ $hewan->id }}" min="0" class="w-28" />
-                        </flux:table.cell>
-                        <flux:table.cell>
-                            <flux:button size="sm" variant="primary" wire:click="updateDistribusi({{ $hewan->id }})">{{ __('Simpan') }}</flux:button>
-                        </flux:table.cell>
-                    </flux:table.row>
-                @empty
-                    <flux:table.row>
-                        <flux:table.cell colspan="5" class="text-center text-zinc-500 dark:text-zinc-400">{{ __('Belum ada data untuk tahap ini.') }}</flux:table.cell>
-                    </flux:table.row>
-                @endforelse
-            </flux:table.rows>
-        </flux:table>
+            @endforelse
+        </div>
     </div>
 </section>

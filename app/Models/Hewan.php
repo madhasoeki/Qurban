@@ -27,8 +27,6 @@ class Hewan extends Model
         'mulai_packing',
         'selesai_packing',
         'kantong_packing',
-        'distribusi',
-        'kantong_distribusi',
         'sohibul_id',
         'keterangan',
     ];

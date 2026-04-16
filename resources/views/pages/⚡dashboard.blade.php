@@ -1,5 +1,6 @@
 <?php
 
+use App\Models\Distribusi;
 use App\Models\Hewan;
 use App\Models\Sohibul;
 use Carbon\CarbonInterface;
@@ -43,13 +44,12 @@ new #[Layout('layouts.dashboard')] #[Title('Dashboard')] class extends Component
                     ->orWhereNull('selesai_cacah_daging')
                     ->orWhereNull('selesai_cacah_tulang')
                     ->orWhereNull('selesai_jeroan')
-                    ->orWhereNull('selesai_packing')
-                    ->orWhere('distribusi', '!=', 1);
+                    ->orWhereNull('selesai_packing');
             })
             ->count();
 
         $totalKantongPacking = (clone $hewanQuery)->sum('kantong_packing');
-        $totalKantongDistribusi = (clone $hewanQuery)->sum('kantong_distribusi');
+        $totalKantongDistribusi = (int) Distribusi::query()->sum('jumlah');
 
         $progressQurbanPercent = $totalSohibulQurban > 0
             ? round(($completedSohibulQurban / $totalSohibulQurban) * 100)
@@ -61,7 +61,7 @@ new #[Layout('layouts.dashboard')] #[Title('Dashboard')] class extends Component
             'totalSohibulQurban' => $totalSohibulQurban,
             'completedSohibulQurban' => $completedSohibulQurban,
             'totalKantongPacking' => (int) $totalKantongPacking,
-            'totalKantongDistribusi' => (int) $totalKantongDistribusi,
+            'totalKantongDistribusi' => $totalKantongDistribusi,
             'lastUpdatedAt' => now()->format('H:i:s'),
         ];
     }
@@ -103,26 +103,13 @@ new #[Layout('layouts.dashboard')] #[Title('Dashboard')] class extends Component
         return $duration;
     }
 
-    public function distribusiStatusLabel(?Hewan $hewan): string
-    {
-        if (! $hewan) {
-            return 'Belum';
-        }
-
-        if ((int) $hewan->distribusi === 1) {
-            return 'Selesai - '.$hewan->kantong_distribusi.' Kantong';
-        }
-
-        return 'Belum';
-    }
-
     public function progressPercent(?Hewan $hewan): int
     {
         if (! $hewan) {
             return 0;
         }
 
-        $totalSteps = 7;
+        $totalSteps = 6;
         $completedSteps = 0;
 
         $completedSteps += $hewan->selesai_jagal !== null ? 1 : 0;
@@ -131,7 +118,6 @@ new #[Layout('layouts.dashboard')] #[Title('Dashboard')] class extends Component
         $completedSteps += $hewan->selesai_cacah_tulang !== null ? 1 : 0;
         $completedSteps += $hewan->selesai_jeroan !== null ? 1 : 0;
         $completedSteps += $hewan->selesai_packing !== null ? 1 : 0;
-        $completedSteps += (int) $hewan->distribusi === 1 ? 1 : 0;
 
         return (int) round(($completedSteps / $totalSteps) * 100);
     }
@@ -158,54 +144,56 @@ new #[Layout('layouts.dashboard')] #[Title('Dashboard')] class extends Component
     }
 }; ?>
 
-<section class="w-full space-y-6 p-6" wire:poll.1s x-data="dashboardDurations">
+<section class="w-full space-y-6 " wire:poll.1s x-data="dashboardDurations">
     <div class="flex flex-col gap-2 sm:flex-row sm:items-end sm:justify-between">
         <div>
-            <flux:heading size="xl">{{ __('Dashboard Operasional Qurban') }}</flux:heading>
-            <flux:subheading>{{ __('Realtime workflow monitor untuk seluruh proses.') }}</flux:subheading>
+            <flux:heading size="xl">Dashboard Qurban Bahagia 2026</flux:heading>
+            <flux:subheading>Realtime workflow monitor untuk seluruh proses qurban Masjid Ismuhu Yahya.</flux:subheading>
         </div>
 
         <div class="flex items-center gap-2">
             <flux:select wire:model.live="jenisFilter" class="w-40">
-                <option value="all">{{ __('Semua Jenis') }}</option>
-                <option value="sapi">{{ __('Sapi') }}</option>
-                <option value="kambing">{{ __('Kambing') }}</option>
+                <option value="all">Semua Jenis</option>
+                <option value="sapi">Sapi</option>
+                <option value="kambing">Kambing</option>
             </flux:select>
             <flux:text class="text-xs text-zinc-500 dark:text-zinc-400">
-                {{ __('Last updated at') }}: {{ $lastUpdatedAt }}
+                {{ $lastUpdatedAt }}
             </flux:text>
         </div>
     </div>
 
-    <div class="grid grid-cols-1 gap-4 lg:grid-cols-4">
+    <div class="grid grid-cols-1 gap-4 lg:grid-cols-2">
         <div class="rounded-lg border border-zinc-200 bg-zinc-50 px-5 py-4 dark:border-zinc-700 dark:bg-zinc-900">
-            <flux:subheading>{{ __('Progress Qurban') }}</flux:subheading>
-            <div class="mt-2 flex items-center gap-4">
-                <div class="relative h-20 w-20 rounded-full" style="background: conic-gradient(#22c55e {{ $progressQurbanPercent }}%, #e4e4e7 0%);">
-                    <div class="absolute inset-2 grid place-content-center rounded-full bg-white text-sm font-semibold text-zinc-700 dark:bg-zinc-900 dark:text-zinc-200">
+            <flux:subheading size="xl">Progress Qurban</flux:subheading>
+            <div class="mt-2 flex flex-col items-center gap-4 sm:flex-row sm:items-center">
+                <div class="relative aspect-square w-full max-w-63 shrink-0 rounded-full" style="background: conic-gradient(#22c55e {{ $progressQurbanPercent }}%, #e4e4e7 0%);">
+                    <div class="absolute inset-6 grid place-content-center rounded-full bg-white text-sm font-semibold text-zinc-700 dark:bg-zinc-900 dark:text-zinc-200">
                         {{ $progressQurbanPercent }}%
                     </div>
                 </div>
-                <div>
-                    <flux:text>{{ __('Selesai') }}: {{ $completedSohibulQurban }}</flux:text>
-                    <flux:text>{{ __('Total Sohibul') }}: {{ $totalSohibulQurban }}</flux:text>
+                <div class="text-center sm:text-left">
+                    <flux:text size="xl">Selesai: {{ $completedSohibulQurban }} Ekor</flux:text>
+                    <flux:text size="xl">Total Hewan: {{ $totalSohibulQurban }} Ekor</flux:text>
                 </div>
             </div>
         </div>
 
-        <div class="rounded-lg border border-zinc-200 bg-zinc-50 px-5 py-4 dark:border-zinc-700 dark:bg-zinc-900">
-            <flux:subheading>{{ __('Total Hewan') }}</flux:subheading>
-            <flux:heading size="xl" class="mt-1">{{ number_format($totalSohibulQurban) }}</flux:heading>
-        </div>
+        <div class="grid grid-cols-1 gap-4">
+            <div class="rounded-lg border border-zinc-200 bg-zinc-50 px-5 py-4 dark:border-zinc-700 dark:bg-zinc-900">
+                <flux:subheading size="lg">Total Hewan</flux:subheading>
+                <flux:heading size="xl" class="mt-1">{{ number_format($totalSohibulQurban) }} Ekor</flux:heading>
+            </div>
 
-        <div class="rounded-lg border border-zinc-200 bg-zinc-50 px-5 py-4 dark:border-zinc-700 dark:bg-zinc-900">
-            <flux:subheading>{{ __('Total Kantong') }}</flux:subheading>
-            <flux:heading size="xl" class="mt-1">{{ number_format($totalKantongPacking) }}</flux:heading>
-        </div>
+            <div class="rounded-lg border border-zinc-200 bg-zinc-50 px-5 py-4 dark:border-zinc-700 dark:bg-zinc-900">
+                <flux:subheading size="lg">Total Kantong</flux:subheading>
+                <flux:heading size="xl" class="mt-1">{{ number_format($totalKantongPacking) }} Kantong</flux:heading>
+            </div>
 
-        <div class="rounded-lg border border-zinc-200 bg-zinc-50 px-5 py-4 dark:border-zinc-700 dark:bg-zinc-900">
-            <flux:subheading>{{ __('Total Distribusi') }}</flux:subheading>
-            <flux:heading size="xl" class="mt-1">{{ number_format($totalKantongDistribusi) }}</flux:heading>
+            <div class="rounded-lg border border-zinc-200 bg-zinc-50 px-5 py-4 dark:border-zinc-700 dark:bg-zinc-900">
+                <flux:subheading size="lg">Total Distribusi</flux:subheading>
+                <flux:heading size="xl" class="mt-1">{{ number_format($totalKantongDistribusi) }} Kantong</flux:heading>
+            </div>
         </div>
     </div>
 
@@ -217,14 +205,14 @@ new #[Layout('layouts.dashboard')] #[Title('Dashboard')] class extends Component
             <article class="space-y-3 rounded-lg border border-zinc-200 bg-white p-4 dark:border-zinc-700 dark:bg-zinc-900">
                 <div class="flex items-start justify-between gap-3">
                     <div>
-                        <flux:subheading class="text-zinc-500">{{ __('Kode Hewan') }}</flux:subheading>
+                        <flux:subheading class="text-zinc-500 font-bold">Kode Hewan</flux:subheading>
                         <flux:heading size="sm">{{ $hewan?->kode ?? '-' }}</flux:heading>
                     </div>
                     <flux:badge color="sky" size="sm">{{ $progress }}%</flux:badge>
                 </div>
 
                 <div>
-                    <flux:subheading class="mb-1 text-zinc-500">{{ __('Sohibul Qurban') }}</flux:subheading>
+                    <flux:subheading class="mb-1 text-zinc-500 font-bold">Sohibul Qurban</flux:subheading>
                     @php($names = $this->sohibulNames($sohibul))
 
                     @if (count($names) > 1)
@@ -242,53 +230,49 @@ new #[Layout('layouts.dashboard')] #[Title('Dashboard')] class extends Component
 
                 <div class="grid grid-cols-2 gap-2 text-sm">
                     <div>
-                        <flux:text class="text-zinc-500">{{ __('Penjagalan') }}</flux:text>
+                        <flux:text class="text-zinc-500 font-bold">Penjagalan</flux:text>
                         <flux:text>{{ $this->stageStatusLabel($hewan, 'mulai_jagal', 'selesai_jagal') }}</flux:text>
                     </div>
                     <div>
-                        <flux:text class="text-zinc-500">{{ __('Pengulitan') }}</flux:text>
+                        <flux:text class="text-zinc-500 font-bold">Pengulitan</flux:text>
                         <flux:text>{{ $this->stageStatusLabel($hewan, 'mulai_kuliti', 'selesai_kuliti') }}</flux:text>
                     </div>
                     <div>
-                        <flux:text class="text-zinc-500">{{ __('Cacah Daging') }}</flux:text>
+                        <flux:text class="text-zinc-500 font-bold">Cacah Daging</flux:text>
                         <flux:text>{{ $this->stageStatusLabel($hewan, 'mulai_cacah_daging', 'selesai_cacah_daging') }}</flux:text>
                     </div>
                     <div>
-                        <flux:text class="text-zinc-500">{{ __('Cacah Tulang') }}</flux:text>
+                        <flux:text class="text-zinc-500 font-bold">Cacah Tulang</flux:text>
                         <flux:text>{{ $this->stageStatusLabel($hewan, 'mulai_cacah_tulang', 'selesai_cacah_tulang') }}</flux:text>
                     </div>
                     <div>
-                        <flux:text class="text-zinc-500">{{ __('Jeroan') }}</flux:text>
+                        <flux:text class="text-zinc-500 font-bold">Jeroan</flux:text>
                         <flux:text>{{ $this->stageStatusLabel($hewan, 'mulai_jeroan', 'selesai_jeroan') }}</flux:text>
                     </div>
                     <div>
-                        <flux:text class="text-zinc-500">{{ __('Packing') }}</flux:text>
+                        <flux:text class="text-zinc-500 font-bold">Packing</flux:text>
                         <flux:text>{{ $this->packingStatusLabel($hewan) }}</flux:text>
                     </div>
                 </div>
 
                 <div class="grid grid-cols-2 gap-2 text-sm">
                     <div>
-                        <flux:text class="text-zinc-500">{{ __('Distribusi') }}</flux:text>
-                        <flux:text>{{ $this->distribusiStatusLabel($hewan) }}</flux:text>
-                    </div>
-                    <div>
-                        <flux:text class="text-zinc-500">{{ __('Request') }}</flux:text>
+                        <flux:text class="text-zinc-500 font-bold">Request</flux:text>
                         <flux:text>{{ $sohibul->request ?: '-' }}</flux:text>
                     </div>
                     <div>
-                        <flux:text class="text-zinc-500">{{ __('Berat Awal') }}</flux:text>
+                        <flux:text class="text-zinc-500 font-bold">Berat Awal</flux:text>
                         <flux:text>{{ $hewan?->berat_awal ?? '-' }}</flux:text>
                     </div>
                     <div>
-                        <flux:text class="text-zinc-500">{{ __('Berat Daging') }}</flux:text>
+                        <flux:text class="text-zinc-500 font-bold">Berat Daging</flux:text>
                         <flux:text>{{ $hewan?->berat_daging ?? '-' }}</flux:text>
                     </div>
                 </div>
             </article>
         @empty
             <div class="rounded-lg border border-zinc-200 px-4 py-6 text-center text-zinc-500 dark:border-zinc-700 dark:text-zinc-400">
-                {{ __('Belum ada data hewan.') }}
+                Belum ada data hewan.
             </div>
         @endforelse
 
@@ -298,21 +282,20 @@ new #[Layout('layouts.dashboard')] #[Title('Dashboard')] class extends Component
     <div class="hidden md:block">
         <flux:table :paginate="$sohibulItems">
             <flux:table.columns>
-                <flux:table.column>{{ __('Kode Hewan') }}</flux:table.column>
-                <flux:table.column>{{ __('Sohibul Qurban') }}</flux:table.column>
-                <flux:table.column>{{ __('Penjagalan') }}</flux:table.column>
-                <flux:table.column>{{ __('Pengulitan') }}</flux:table.column>
-                <flux:table.column>{{ __('Cacah Daging') }}</flux:table.column>
-                <flux:table.column>{{ __('Cacah Tulang') }}</flux:table.column>
-                <flux:table.column>{{ __('Jeroan') }}</flux:table.column>
-                <flux:table.column>{{ __('Packing') }}</flux:table.column>
-                <flux:table.column>{{ __('Distribusi') }}</flux:table.column>
-                <flux:table.column>{{ __('Progress') }}</flux:table.column>
-                <flux:table.column>{{ __('Berat Awal') }}</flux:table.column>
-                <flux:table.column>{{ __('Berat Daging') }}</flux:table.column>
-                <flux:table.column>{{ __('Berat Tulang') }}</flux:table.column>
-                <flux:table.column>{{ __('Request') }}</flux:table.column>
-                <flux:table.column>{{ __('Keterangan') }}</flux:table.column>
+                <flux:table.column>Kode </br>Hewan</flux:table.column>
+                <flux:table.column>Sohibul Qurban</flux:table.column>
+                <flux:table.column>Penjagalan</flux:table.column>
+                <flux:table.column>Pengulitan</flux:table.column>
+                <flux:table.column>Cacah Daging</flux:table.column>
+                <flux:table.column>Cacah Tulang</flux:table.column>
+                <flux:table.column>Jeroan</flux:table.column>
+                <flux:table.column>Packing</flux:table.column>
+                <flux:table.column>Progress</flux:table.column>
+                <flux:table.column>Berat</br>Awal</flux:table.column>
+                <flux:table.column>Berat</br>Daging</flux:table.column>
+                <flux:table.column>Berat</br>Tulang</flux:table.column>
+                <flux:table.column>Request</flux:table.column>
+                <flux:table.column>Keterangan</flux:table.column>
             </flux:table.columns>
 
             <flux:table.rows>
@@ -411,16 +394,6 @@ new #[Layout('layouts.dashboard')] #[Title('Dashboard')] class extends Component
                             @endif
                         </flux:table.cell>
                         <flux:table.cell>
-                            @if ((int) ($hewan?->distribusi ?? 0) === 1)
-                                <div class="flex flex-col items-start gap-1 leading-tight">
-                                    <flux:badge color="green">Selesai</flux:badge>
-                                    <flux:badge color="cyan">{{ $hewan?->kantong_distribusi ?? 0 }} Kantong</flux:badge>
-                                </div>
-                            @else
-                                <flux:badge color="red">Belum Mulai</flux:badge>
-                            @endif
-                        </flux:table.cell>
-                        <flux:table.cell>
                             <div class="flex min-w-40 items-center gap-2">
                                 <div class="h-2 w-24 overflow-hidden rounded-full bg-zinc-200 dark:bg-zinc-700">
                                     <div class="h-full rounded-full bg-emerald-500" style="width: {{ $progress }}%"></div>
@@ -428,16 +401,16 @@ new #[Layout('layouts.dashboard')] #[Title('Dashboard')] class extends Component
                                 <span class="text-xs font-medium text-zinc-700 dark:text-zinc-300">{{ $progress }}%</span>
                             </div>
                         </flux:table.cell>
-                        <flux:table.cell>{{ $hewan?->berat_awal ?? '-' }}</flux:table.cell>
-                        <flux:table.cell>{{ $hewan?->berat_daging ?? '-' }}</flux:table.cell>
-                        <flux:table.cell>{{ $hewan?->berat_tulang ?? '-' }}</flux:table.cell>
-                        <flux:table.cell>{{ $sohibul->request ?: '-' }}</flux:table.cell>
-                        <flux:table.cell>{{ $hewan?->keterangan ?? '-' }}</flux:table.cell>
+                        <flux:table.cell class="text-center">{{ $hewan?->berat_awal ?? '-' }} Kg</flux:table.cell>
+                        <flux:table.cell class="text-center">{{ $hewan?->berat_daging ?? '-' }} Kg</flux:table.cell>
+                        <flux:table.cell class="text-center">{{ $hewan?->berat_tulang ?? '-' }} Kg</flux:table.cell>
+                        <flux:table.cell class="max-w-[20ch] whitespace-normal break-words leading-snug">{{ $sohibul->request ?: '-' }}</flux:table.cell>
+                        <flux:table.cell class="max-w-[20ch] whitespace-normal break-words leading-snug">{{ $hewan?->keterangan ?? '-' }}</flux:table.cell>
                     </flux:table.row>
                 @empty
                     <flux:table.row>
-                        <flux:table.cell colspan="15" class="text-center text-zinc-500 dark:text-zinc-400">
-                            {{ __('Belum ada data hewan.') }}
+                        <flux:table.cell colspan="14" class="text-center text-zinc-500 dark:text-zinc-400">
+                            Belum ada data hewan.
                         </flux:table.cell>
                     </flux:table.row>
                 @endforelse
