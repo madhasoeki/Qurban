@@ -294,7 +294,7 @@ new #[Layout('layouts.dashboard')] #[Title('Jagal')] class extends Component
     }
 }; ?>
 
-<section class="w-full space-y-6 p-6" wire:poll.10s x-data="dashboardDurations">
+<section class="w-full space-y-6" wire:poll.10s x-data="dashboardDurations">
     <div class="flex flex-col gap-2 sm:flex-row sm:items-end sm:justify-between">
         <div>
             <flux:heading size="xl">{{ $pageTitle }}</flux:heading>

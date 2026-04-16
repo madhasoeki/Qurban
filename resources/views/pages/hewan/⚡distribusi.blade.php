@@ -138,7 +138,7 @@ new #[Layout('layouts.dashboard')] #[Title('Distribusi')] class extends Componen
     }
 }; ?>
 
-<section class="w-full space-y-6 p-6" wire:poll.10s>
+<section class="w-full space-y-6" wire:poll.10s>
     <div class="flex flex-col gap-2 sm:flex-row sm:items-end sm:justify-between">
         <div>
             <flux:heading size="xl">{{ $pageTitle }}</flux:heading>

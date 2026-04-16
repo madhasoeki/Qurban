@@ -108,7 +108,10 @@ new #[Layout('layouts.dashboard')] #[Title('Cacah Tulang')] class extends Compon
                 ->whereNotNull('selesai_jagal')
                 ->when($this->jenisQurbanFilter !== 'all', fn ($query) => $query->whereHas('sohibul', fn ($relation) => $relation->where('jenis_qurban', $this->jenisQurbanFilter)))
                 ->when($this->search, fn ($query) => $query->where('kode', 'like', '%'.$this->search.'%'))
-                ->latest('id')
+                ->orderByRaw("CASE WHEN mulai_cacah_tulang IS NOT NULL AND selesai_cacah_tulang IS NULL THEN 0 WHEN mulai_cacah_tulang IS NULL THEN 1 ELSE 2 END")
+                ->orderByRaw("CASE WHEN mulai_cacah_tulang IS NOT NULL AND selesai_cacah_tulang IS NULL THEN mulai_cacah_tulang END ASC")
+                ->orderByRaw("CASE WHEN mulai_cacah_tulang IS NULL THEN id END DESC")
+                ->orderByRaw("CASE WHEN selesai_cacah_tulang IS NOT NULL THEN selesai_cacah_tulang END DESC")
                 ->paginate(12),
             'nowLabel' => now()->format('H:i:s'),
         ];
@@ -121,10 +124,23 @@ new #[Layout('layouts.dashboard')] #[Title('Cacah Tulang')] class extends Compon
         }
 
         if ($hewan->mulai_cacah_tulang !== null) {
-            return $hewan->mulai_cacah_tulang->format('H:i:s');
+            return 'Sedang Proses';
         }
 
         return 'Belum Mulai';
+    }
+
+    public function statusColor(Hewan $hewan): string
+    {
+        if ($hewan->selesai_cacah_tulang !== null) {
+            return 'green';
+        }
+
+        if ($hewan->mulai_cacah_tulang !== null) {
+            return 'yellow';
+        }
+
+        return 'red';
     }
 
     public function durationLabel(?CarbonInterface $start, ?CarbonInterface $finish): string
@@ -156,7 +172,7 @@ new #[Layout('layouts.dashboard')] #[Title('Cacah Tulang')] class extends Compon
     }
 }; ?>
 
-<section class="w-full space-y-6 p-6" wire:poll.10s>
+<section class="w-full space-y-6" wire:poll.10s x-data="dashboardDurations">
     <div class="flex flex-col gap-2 sm:flex-row sm:items-end sm:justify-between">
         <div>
             <flux:heading size="xl">{{ $pageTitle }}</flux:heading>
@@ -183,7 +199,7 @@ new #[Layout('layouts.dashboard')] #[Title('Cacah Tulang')] class extends Compon
                         <flux:subheading class="text-zinc-500">{{ __('Kode') }}</flux:subheading>
                         <flux:heading size="lg">{{ $hewan->kode }}</flux:heading>
                     </div>
-                    <flux:badge size="sm">{{ $this->statusLabel($hewan) }}</flux:badge>
+                    <flux:badge size="sm" :color="$this->statusColor($hewan)">{{ $this->statusLabel($hewan) }}</flux:badge>
                 </div>
 
                 <div>
@@ -205,7 +221,7 @@ new #[Layout('layouts.dashboard')] #[Title('Cacah Tulang')] class extends Compon
 
                 <div class="flex items-center justify-between gap-2">
                     <flux:text class="text-xs text-zinc-500">{{ __('Waktu Proses') }}</flux:text>
-                    <flux:text class="font-medium">{{ $this->durationLabel($hewan->mulai_cacah_tulang, $hewan->selesai_cacah_tulang) }}</flux:text>
+                    <flux:text class="font-medium" x-text="stageDurationValue({{ $hewan->mulai_cacah_tulang?->timestamp ?? 'null' }}, {{ $hewan->selesai_cacah_tulang?->timestamp ?? 'null' }})">{{ $this->durationLabel($hewan->mulai_cacah_tulang, $hewan->selesai_cacah_tulang) }}</flux:text>
                 </div>
 
                 <div>
@@ -253,8 +269,10 @@ new #[Layout('layouts.dashboard')] #[Title('Cacah Tulang')] class extends Compon
                                 -
                             @endif
                         </flux:table.cell>
-                        <flux:table.cell>{{ $this->statusLabel($hewan) }}</flux:table.cell>
-                        <flux:table.cell>{{ $this->durationLabel($hewan->mulai_cacah_tulang, $hewan->selesai_cacah_tulang) }}</flux:table.cell>
+                        <flux:table.cell>
+                            <flux:badge size="sm" :color="$this->statusColor($hewan)">{{ $this->statusLabel($hewan) }}</flux:badge>
+                        </flux:table.cell>
+                        <flux:table.cell x-text="stageDurationValue({{ $hewan->mulai_cacah_tulang?->timestamp ?? 'null' }}, {{ $hewan->selesai_cacah_tulang?->timestamp ?? 'null' }})">{{ $this->durationLabel($hewan->mulai_cacah_tulang, $hewan->selesai_cacah_tulang) }}</flux:table.cell>
                         <flux:table.cell>
                             @if ($hewan->mulai_cacah_tulang === null)
                                 <flux:button size="sm" wire:click="openConfirmModal({{ $hewan->id }}, 'startCacahTulang', 'Mulai Cacah Tulang', 'Yakin ingin memulai proses cacah tulang?')">{{ __('Mulai') }}</flux:button>

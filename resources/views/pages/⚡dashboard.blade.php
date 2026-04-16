@@ -51,6 +51,35 @@ new #[Layout('layouts.dashboard')] #[Title('Dashboard')] class extends Component
         $totalKantongPacking = (clone $hewanQuery)->sum('kantong_packing');
         $totalKantongDistribusi = (int) Distribusi::query()->sum('jumlah');
 
+        $hewanOverallItems = (clone $hewanQuery)
+            ->select([
+                'mulai_jagal',
+                'selesai_jagal',
+                'selesai_kuliti',
+                'selesai_cacah_daging',
+                'selesai_cacah_tulang',
+                'selesai_jeroan',
+                'selesai_packing',
+            ])
+            ->get();
+
+        $overallStartAt = $hewanOverallItems
+            ->pluck('mulai_jagal')
+            ->filter()
+            ->sortBy(fn (CarbonInterface $time) => $time->timestamp)
+            ->first();
+
+        $allHewanCompleted = $totalSohibulQurban > 0
+            && $completedSohibulQurban === $totalSohibulQurban;
+
+        $overallFinishAt = $allHewanCompleted
+            ? $hewanOverallItems
+                ->map(fn (Hewan $hewan) => $this->hewanDurationFinishTime($hewan))
+                ->filter()
+                ->sortByDesc(fn (CarbonInterface $time) => $time->timestamp)
+                ->first()
+            : null;
+
         $progressQurbanPercent = $totalSohibulQurban > 0
             ? round(($completedSohibulQurban / $totalSohibulQurban) * 100)
             : 0;
@@ -62,6 +91,11 @@ new #[Layout('layouts.dashboard')] #[Title('Dashboard')] class extends Component
             'completedSohibulQurban' => $completedSohibulQurban,
             'totalKantongPacking' => (int) $totalKantongPacking,
             'totalKantongDistribusi' => $totalKantongDistribusi,
+            'overallStartLabel' => $this->timeLabel($overallStartAt),
+            'overallFinishLabel' => $this->timeLabel($overallFinishAt),
+            'overallDurationLabel' => $this->durationValueLabel($overallStartAt, $overallFinishAt),
+            'overallStartTimestamp' => $overallStartAt?->timestamp,
+            'overallFinishTimestamp' => $overallFinishAt?->timestamp,
             'lastUpdatedAt' => now()->format('H:i:s'),
         ];
     }
@@ -122,6 +156,69 @@ new #[Layout('layouts.dashboard')] #[Title('Dashboard')] class extends Component
         return (int) round(($completedSteps / $totalSteps) * 100);
     }
 
+    public function hewanStartTime(?Hewan $hewan): ?CarbonInterface
+    {
+        return $hewan?->mulai_jagal;
+    }
+
+    public function hewanFinishTime(?Hewan $hewan): ?CarbonInterface
+    {
+        if (! $hewan) {
+            return null;
+        }
+
+        return collect([
+            $hewan->selesai_jagal,
+            $hewan->selesai_kuliti,
+            $hewan->selesai_cacah_daging,
+            $hewan->selesai_cacah_tulang,
+            $hewan->selesai_jeroan,
+            $hewan->selesai_packing,
+        ])
+            ->filter()
+            ->sortByDesc(fn (CarbonInterface $time) => $time->timestamp)
+            ->first();
+    }
+
+    public function isHewanCompleted(?Hewan $hewan): bool
+    {
+        if (! $hewan) {
+            return false;
+        }
+
+        return $hewan->selesai_jagal !== null
+            && $hewan->selesai_kuliti !== null
+            && $hewan->selesai_cacah_daging !== null
+            && $hewan->selesai_cacah_tulang !== null
+            && $hewan->selesai_jeroan !== null
+            && $hewan->selesai_packing !== null;
+    }
+
+    public function hewanDurationFinishTime(?Hewan $hewan): ?CarbonInterface
+    {
+        if (! $this->isHewanCompleted($hewan)) {
+            return null;
+        }
+
+        return $hewan?->selesai_packing;
+    }
+
+    public function timeLabel(?CarbonInterface $time): string
+    {
+        return $time?->format('H:i:s') ?? '-';
+    }
+
+    public function durationValueLabel(?CarbonInterface $start, ?CarbonInterface $finish = null): string
+    {
+        if ($start === null) {
+            return '-';
+        }
+
+        $seconds = max(0, $start->diffInSeconds($finish ?? now()));
+
+        return sprintf('%02d:%02d:%02d', intdiv($seconds, 3600), intdiv($seconds % 3600, 60), $seconds % 60);
+    }
+
     public function currentHewan(Sohibul $sohibul): ?Hewan
     {
         return $sohibul->hewan->first();
@@ -144,7 +241,7 @@ new #[Layout('layouts.dashboard')] #[Title('Dashboard')] class extends Component
     }
 }; ?>
 
-<section class="w-full space-y-6 " wire:poll.1s x-data="dashboardDurations">
+<section class="w-full space-y-6" wire:poll.1s x-data="dashboardDurations">
     <div class="flex flex-col gap-2 sm:flex-row sm:items-end sm:justify-between">
         <div>
             <flux:heading size="xl">Dashboard Qurban Bahagia 2026</flux:heading>
@@ -163,8 +260,8 @@ new #[Layout('layouts.dashboard')] #[Title('Dashboard')] class extends Component
         </div>
     </div>
 
-    <div class="grid grid-cols-1 gap-4 lg:grid-cols-2">
-        <div class="rounded-lg border border-zinc-200 bg-zinc-50 px-5 py-4 dark:border-zinc-700 dark:bg-zinc-900">
+    <div class="grid grid-cols-1 gap-4 lg:grid-cols-10">
+        <div class="rounded-lg border border-zinc-200 bg-zinc-50 px-5 py-4 dark:border-zinc-700 dark:bg-zinc-900 lg:col-span-4">
             <flux:subheading size="xl">Progress Qurban</flux:subheading>
             <div class="mt-2 flex flex-col items-center gap-4 sm:flex-row sm:items-center">
                 <div class="relative aspect-square w-full max-w-63 shrink-0 rounded-full" style="background: conic-gradient(#22c55e {{ $progressQurbanPercent }}%, #e4e4e7 0%);">
@@ -179,7 +276,7 @@ new #[Layout('layouts.dashboard')] #[Title('Dashboard')] class extends Component
             </div>
         </div>
 
-        <div class="grid grid-cols-1 gap-4">
+        <div class="grid grid-cols-1 gap-4 lg:col-span-3">
             <div class="rounded-lg border border-zinc-200 bg-zinc-50 px-5 py-4 dark:border-zinc-700 dark:bg-zinc-900">
                 <flux:subheading size="lg">Total Hewan</flux:subheading>
                 <flux:heading size="xl" class="mt-1">{{ number_format($totalSohibulQurban) }} Ekor</flux:heading>
@@ -193,6 +290,23 @@ new #[Layout('layouts.dashboard')] #[Title('Dashboard')] class extends Component
             <div class="rounded-lg border border-zinc-200 bg-zinc-50 px-5 py-4 dark:border-zinc-700 dark:bg-zinc-900">
                 <flux:subheading size="lg">Total Distribusi</flux:subheading>
                 <flux:heading size="xl" class="mt-1">{{ number_format($totalKantongDistribusi) }} Kantong</flux:heading>
+            </div>
+        </div>
+
+        <div class="grid grid-cols-1 gap-4 lg:col-span-3">
+            <div class="rounded-lg border border-zinc-200 bg-zinc-50 px-5 py-4 dark:border-zinc-700 dark:bg-zinc-900">
+                <flux:subheading size="lg">Waktu Mulai</flux:subheading>
+                <flux:heading size="xl" class="mt-1">{{ $overallStartLabel }}</flux:heading>
+            </div>
+
+            <div class="rounded-lg border border-zinc-200 bg-zinc-50 px-5 py-4 dark:border-zinc-700 dark:bg-zinc-900">
+                <flux:subheading size="lg">Waktu Selesai</flux:subheading>
+                <flux:heading size="xl" class="mt-1">{{ $overallFinishLabel }}</flux:heading>
+            </div>
+
+            <div class="rounded-lg border border-zinc-200 bg-zinc-50 px-5 py-4 dark:border-zinc-700 dark:bg-zinc-900">
+                <flux:subheading size="lg">Durasi Pengerjaan</flux:subheading>
+                <flux:heading size="xl" class="mt-1" x-text="stageDurationValue({{ $overallStartTimestamp ?? 'null' }}, {{ $overallFinishTimestamp ?? 'null' }})">{{ $overallDurationLabel }}</flux:heading>
             </div>
         </div>
     </div>
@@ -296,12 +410,17 @@ new #[Layout('layouts.dashboard')] #[Title('Dashboard')] class extends Component
                 <flux:table.column>Berat</br>Tulang</flux:table.column>
                 <flux:table.column>Request</flux:table.column>
                 <flux:table.column>Keterangan</flux:table.column>
+                <flux:table.column>Waktu Mulai</flux:table.column>
+                <flux:table.column>Waktu Selesai</flux:table.column>
+                <flux:table.column>Durasi</flux:table.column>
             </flux:table.columns>
 
             <flux:table.rows>
                 @forelse ($sohibulItems as $sohibul)
                     @php($hewan = $this->currentHewan($sohibul))
                     @php($progress = $this->progressPercent($hewan))
+                    @php($hewanStartAt = $this->hewanStartTime($hewan))
+                    @php($hewanFinishAt = $this->hewanDurationFinishTime($hewan))
 
                     <flux:table.row :key="'dashboard-sohibul-'.$sohibul->id">
                         <flux:table.cell>{{ $hewan?->kode ?? '-' }}</flux:table.cell>
@@ -406,10 +525,15 @@ new #[Layout('layouts.dashboard')] #[Title('Dashboard')] class extends Component
                         <flux:table.cell class="text-center">{{ $hewan?->berat_tulang ?? '-' }} Kg</flux:table.cell>
                         <flux:table.cell class="max-w-[20ch] whitespace-normal break-words leading-snug">{{ $sohibul->request ?: '-' }}</flux:table.cell>
                         <flux:table.cell class="max-w-[20ch] whitespace-normal break-words leading-snug">{{ $hewan?->keterangan ?? '-' }}</flux:table.cell>
+                        <flux:table.cell>{{ $this->timeLabel($hewanStartAt) }}</flux:table.cell>
+                        <flux:table.cell>{{ $this->timeLabel($hewanFinishAt) }}</flux:table.cell>
+                        <flux:table.cell>
+                            <span x-text="stageDurationValue({{ $hewanStartAt?->timestamp ?? 'null' }}, {{ $hewanFinishAt?->timestamp ?? 'null' }})">{{ $this->durationValueLabel($hewanStartAt, $hewanFinishAt) }}</span>
+                        </flux:table.cell>
                     </flux:table.row>
                 @empty
                     <flux:table.row>
-                        <flux:table.cell colspan="14" class="text-center text-zinc-500 dark:text-zinc-400">
+                        <flux:table.cell colspan="17" class="text-center text-zinc-500 dark:text-zinc-400">
                             Belum ada data hewan.
                         </flux:table.cell>
                     </flux:table.row>

@@ -28,6 +28,9 @@ new #[Layout('layouts.dashboard')] #[Title('Packing')] class extends Component {
     /** @var array<int, int|string> */
     public array $packingBags = [];
 
+    /** @var array<int, bool> */
+    public array $isEditingPackingBags = [];
+
     public function mount(): void
     {
         //
@@ -101,6 +104,7 @@ new #[Layout('layouts.dashboard')] #[Title('Packing')] class extends Component {
         $bags = (int) ($this->packingBags[$hewan->id] ?? 0);
         if ($bags <= 0) {
             $this->addError('packingBags.'.$hewan->id, __('Jumlah kantong packing wajib diisi dan harus lebih dari 0.'));
+            Flux::toast(variant: 'danger', text: 'Jumlah kantong belum valid. Isi lebih dari 0 sebelum menyelesaikan packing.');
 
             return;
         }
@@ -113,14 +117,64 @@ new #[Layout('layouts.dashboard')] #[Title('Packing')] class extends Component {
         Flux::toast(variant: 'success', text: __('Tahap packing berhasil diselesaikan.'));
     }
 
+    public function updatePackingBags(int $hewanId): void
+    {
+        $hewan = Hewan::query()->findOrFail($hewanId);
+
+        if ($hewan->selesai_packing === null) {
+            return;
+        }
+
+        $bags = (int) ($this->packingBags[$hewan->id] ?? 0);
+
+        if ($bags <= 0) {
+            $this->addError('packingBags.'.$hewan->id, __('Jumlah kantong packing wajib diisi dan harus lebih dari 0.'));
+            Flux::toast(variant: 'danger', text: 'Jumlah kantong belum valid. Isi lebih dari 0 sebelum menyimpan perubahan.');
+
+            return;
+        }
+
+        $hewan->update([
+            'kantong_packing' => $bags,
+        ]);
+
+        $this->isEditingPackingBags[$hewan->id] = false;
+
+        Flux::toast(variant: 'success', text: 'Jumlah kantong packing berhasil diperbarui.');
+    }
+
+    public function startEditPackingBags(int $hewanId): void
+    {
+        $hewan = Hewan::query()->findOrFail($hewanId);
+
+        if ($hewan->selesai_packing === null) {
+            return;
+        }
+
+        $this->packingBags[$hewan->id] = $hewan->kantong_packing;
+        $this->isEditingPackingBags[$hewan->id] = true;
+    }
+
+    public function cancelEditPackingBags(int $hewanId): void
+    {
+        $hewan = Hewan::query()->findOrFail($hewanId);
+
+        $this->packingBags[$hewan->id] = $hewan->kantong_packing;
+        $this->isEditingPackingBags[$hewan->id] = false;
+        $this->resetErrorBag('packingBags.'.$hewan->id);
+    }
+
     public function with(): array
     {
         $hewanItems = Hewan::query()
-            ->with('sohibul:id,nama,jenis_qurban')
+            ->with('sohibul:id,nama,jenis_qurban,request')
             ->whereNotNull('selesai_jagal')
             ->when($this->jenisQurbanFilter !== 'all', fn ($query) => $query->whereHas('sohibul', fn ($relation) => $relation->where('jenis_qurban', $this->jenisQurbanFilter)))
             ->when($this->search, fn ($query) => $query->where('kode', 'like', '%'.$this->search.'%'))
-            ->latest('id')
+            ->orderByRaw("CASE WHEN mulai_packing IS NOT NULL AND selesai_packing IS NULL THEN 0 WHEN mulai_packing IS NULL THEN 1 ELSE 2 END")
+            ->orderByRaw("CASE WHEN mulai_packing IS NOT NULL AND selesai_packing IS NULL THEN mulai_packing END ASC")
+            ->orderByRaw("CASE WHEN mulai_packing IS NULL THEN id END DESC")
+            ->orderByRaw("CASE WHEN selesai_packing IS NOT NULL THEN selesai_packing END DESC")
             ->paginate(12);
 
         foreach ($hewanItems as $hewan) {
@@ -141,10 +195,23 @@ new #[Layout('layouts.dashboard')] #[Title('Packing')] class extends Component {
         }
 
         if ($hewan->mulai_packing !== null) {
-            return $hewan->mulai_packing->format('H:i:s');
+            return 'Sedang Proses';
         }
 
         return 'Belum Mulai';
+    }
+
+    public function statusColor(Hewan $hewan): string
+    {
+        if ($hewan->selesai_packing !== null) {
+            return 'green';
+        }
+
+        if ($hewan->mulai_packing !== null) {
+            return 'yellow';
+        }
+
+        return 'red';
     }
 
     public function durationLabel(?CarbonInterface $start, ?CarbonInterface $finish): string
@@ -176,7 +243,7 @@ new #[Layout('layouts.dashboard')] #[Title('Packing')] class extends Component {
     }
 }; ?>
 
-<section class="w-full space-y-6 p-6" wire:poll.10s>
+<section class="w-full space-y-6" wire:poll.10s x-data="dashboardDurations">
     <div class="flex flex-col gap-2 sm:flex-row sm:items-end sm:justify-between">
         <div>
             <flux:heading size="xl">{{ $pageTitle }}</flux:heading>
@@ -203,7 +270,7 @@ new #[Layout('layouts.dashboard')] #[Title('Packing')] class extends Component {
                         <flux:subheading class="text-zinc-500">{{ __('Kode') }}</flux:subheading>
                         <flux:heading size="lg">{{ $hewan->kode }}</flux:heading>
                     </div>
-                    <flux:badge size="sm">{{ $this->statusLabel($hewan) }}</flux:badge>
+                    <flux:badge size="sm" :color="$this->statusColor($hewan)">{{ $this->statusLabel($hewan) }}</flux:badge>
                 </div>
 
                 <div>
@@ -225,7 +292,12 @@ new #[Layout('layouts.dashboard')] #[Title('Packing')] class extends Component {
 
                 <div class="flex items-center justify-between gap-2">
                     <flux:text class="text-xs text-zinc-500">{{ __('Waktu Proses') }}</flux:text>
-                    <flux:text class="font-medium">{{ $this->durationLabel($hewan->mulai_packing, $hewan->selesai_packing) }}</flux:text>
+                    <flux:text class="font-medium" x-text="stageDurationValue({{ $hewan->mulai_packing?->timestamp ?? 'null' }}, {{ $hewan->selesai_packing?->timestamp ?? 'null' }})">{{ $this->durationLabel($hewan->mulai_packing, $hewan->selesai_packing) }}</flux:text>
+                </div>
+
+                <div class="flex items-center justify-between gap-2">
+                    <flux:text class="text-xs text-zinc-500">Request</flux:text>
+                    <flux:text class="text-right font-medium">{{ $hewan->sohibul?->request ?: '-' }}</flux:text>
                 </div>
 
                 <div class="space-y-2">
@@ -234,6 +306,17 @@ new #[Layout('layouts.dashboard')] #[Title('Packing')] class extends Component {
                     @elseif ($hewan->selesai_packing === null)
                         <flux:input type="number" wire:model="packingBags.{{ $hewan->id }}" min="1" :placeholder="__('Kantong')" />
                         <flux:button size="sm" variant="primary" class="w-full" wire:click="openConfirmModal({{ $hewan->id }}, 'finishPacking', 'Selesaikan Packing', 'Yakin ingin menyelesaikan proses packing?')">{{ __('Selesai') }}</flux:button>
+                    @else
+                        @if (($isEditingPackingBags[$hewan->id] ?? false) === true)
+                            <flux:input type="number" wire:model="packingBags.{{ $hewan->id }}" min="1" :placeholder="__('Kantong')" />
+                            <div class="flex items-center gap-2">
+                                <flux:button size="sm" variant="filled" class="w-full" wire:click="updatePackingBags({{ $hewan->id }})">Simpan</flux:button>
+                                <flux:button size="sm" variant="ghost" class="w-full" wire:click="cancelEditPackingBags({{ $hewan->id }})">Batal</flux:button>
+                            </div>
+                        @else
+                            <flux:text class="text-sm font-medium">{{ number_format((int) ($packingBags[$hewan->id] ?? $hewan->kantong_packing)) }} Kantong</flux:text>
+                            <flux:button size="sm" variant="ghost" class="w-full" wire:click="startEditPackingBags({{ $hewan->id }})">Edit Jumlah Kantong</flux:button>
+                        @endif
                     @endif
                 </div>
             </article>
@@ -251,6 +334,7 @@ new #[Layout('layouts.dashboard')] #[Title('Packing')] class extends Component {
             <flux:table.columns>
                 <flux:table.column>{{ __('Kode') }}</flux:table.column>
                 <flux:table.column>{{ __('Sohibul') }}</flux:table.column>
+                <flux:table.column>Request</flux:table.column>
                 <flux:table.column>{{ __('Status') }}</flux:table.column>
                 <flux:table.column>{{ __('Waktu Proses') }}</flux:table.column>
                 <flux:table.column>{{ __('Aksi') }}</flux:table.column>
@@ -274,8 +358,11 @@ new #[Layout('layouts.dashboard')] #[Title('Packing')] class extends Component {
                                 -
                             @endif
                         </flux:table.cell>
-                        <flux:table.cell>{{ $this->statusLabel($hewan) }}</flux:table.cell>
-                        <flux:table.cell>{{ $this->durationLabel($hewan->mulai_packing, $hewan->selesai_packing) }}</flux:table.cell>
+                        <flux:table.cell>{{ $hewan->sohibul?->request ?: '-' }}</flux:table.cell>
+                        <flux:table.cell>
+                            <flux:badge size="sm" :color="$this->statusColor($hewan)">{{ $this->statusLabel($hewan) }}</flux:badge>
+                        </flux:table.cell>
+                        <flux:table.cell x-text="stageDurationValue({{ $hewan->mulai_packing?->timestamp ?? 'null' }}, {{ $hewan->selesai_packing?->timestamp ?? 'null' }})">{{ $this->durationLabel($hewan->mulai_packing, $hewan->selesai_packing) }}</flux:table.cell>
                         <flux:table.cell>
                             <div class="flex items-center gap-2">
                                 @if ($hewan->mulai_packing === null)
@@ -283,13 +370,22 @@ new #[Layout('layouts.dashboard')] #[Title('Packing')] class extends Component {
                                 @elseif ($hewan->selesai_packing === null)
                                     <flux:input type="number" wire:model="packingBags.{{ $hewan->id }}" min="1" class="w-24" :placeholder="__('Kantong')" />
                                     <flux:button size="sm" variant="primary" wire:click="openConfirmModal({{ $hewan->id }}, 'finishPacking', 'Selesaikan Packing', 'Yakin ingin menyelesaikan proses packing?')">{{ __('Selesai') }}</flux:button>
+                                @else
+                                    @if (($isEditingPackingBags[$hewan->id] ?? false) === true)
+                                        <flux:input type="number" wire:model="packingBags.{{ $hewan->id }}" min="1" class="w-24" :placeholder="__('Kantong')" />
+                                        <flux:button size="sm" variant="filled" wire:click="updatePackingBags({{ $hewan->id }})">Simpan</flux:button>
+                                        <flux:button size="sm" variant="ghost" wire:click="cancelEditPackingBags({{ $hewan->id }})">Batal</flux:button>
+                                    @else
+                                        <flux:text class="text-sm font-medium">{{ number_format((int) ($packingBags[$hewan->id] ?? $hewan->kantong_packing)) }} Kantong</flux:text>
+                                        <flux:button size="sm" variant="ghost" wire:click="startEditPackingBags({{ $hewan->id }})">Edit Jumlah Kantong</flux:button>
+                                    @endif
                                 @endif
                             </div>
                         </flux:table.cell>
                     </flux:table.row>
                 @empty
                     <flux:table.row>
-                        <flux:table.cell colspan="5" class="text-center text-zinc-500 dark:text-zinc-400">{{ __('Belum ada data untuk tahap ini.') }}</flux:table.cell>
+                        <flux:table.cell colspan="6" class="text-center text-zinc-500 dark:text-zinc-400">{{ __('Belum ada data untuk tahap ini.') }}</flux:table.cell>
                     </flux:table.row>
                 @endforelse
             </flux:table.rows>
