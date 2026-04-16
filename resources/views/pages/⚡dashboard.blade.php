@@ -69,16 +69,11 @@ new #[Layout('layouts.dashboard')] #[Title('Dashboard')] class extends Component
             ->sortBy(fn (CarbonInterface $time) => $time->timestamp)
             ->first();
 
-        $allHewanCompleted = $totalSohibulQurban > 0
-            && $completedSohibulQurban === $totalSohibulQurban;
-
-        $overallFinishAt = $allHewanCompleted
-            ? $hewanOverallItems
-                ->map(fn (Hewan $hewan) => $this->hewanDurationFinishTime($hewan))
-                ->filter()
-                ->sortByDesc(fn (CarbonInterface $time) => $time->timestamp)
-                ->first()
-            : null;
+        $overallFinishAt = $hewanOverallItems
+            ->pluck('selesai_kuliti')
+            ->filter()
+            ->sortByDesc(fn (CarbonInterface $time) => $time->timestamp)
+            ->first();
 
         $progressQurbanPercent = $totalSohibulQurban > 0
             ? round(($completedSohibulQurban / $totalSohibulQurban) * 100)
@@ -410,8 +405,8 @@ new #[Layout('layouts.dashboard')] #[Title('Dashboard')] class extends Component
                 <flux:table.column>Berat</br>Tulang</flux:table.column>
                 <flux:table.column>Request</flux:table.column>
                 <flux:table.column>Keterangan</flux:table.column>
-                <flux:table.column>Waktu Mulai</flux:table.column>
-                <flux:table.column>Waktu Selesai</flux:table.column>
+                <flux:table.column>Waktu</br>Mulai</flux:table.column>
+                <flux:table.column>Waktu</br>Selesai</flux:table.column>
                 <flux:table.column>Durasi</flux:table.column>
             </flux:table.columns>
 
@@ -525,9 +520,9 @@ new #[Layout('layouts.dashboard')] #[Title('Dashboard')] class extends Component
                         <flux:table.cell class="text-center">{{ $hewan?->berat_tulang ?? '-' }} Kg</flux:table.cell>
                         <flux:table.cell class="max-w-[20ch] whitespace-normal break-words leading-snug">{{ $sohibul->request ?: '-' }}</flux:table.cell>
                         <flux:table.cell class="max-w-[20ch] whitespace-normal break-words leading-snug">{{ $hewan?->keterangan ?? '-' }}</flux:table.cell>
-                        <flux:table.cell>{{ $this->timeLabel($hewanStartAt) }}</flux:table.cell>
-                        <flux:table.cell>{{ $this->timeLabel($hewanFinishAt) }}</flux:table.cell>
-                        <flux:table.cell>
+                        <flux:table.cell class="text-center">{{ $this->timeLabel($hewanStartAt) }}</flux:table.cell>
+                        <flux:table.cell class="text-center">{{ $this->timeLabel($hewanFinishAt) }}</flux:table.cell>
+                        <flux:table.cell class="text-center">
                             <span x-text="stageDurationValue({{ $hewanStartAt?->timestamp ?? 'null' }}, {{ $hewanFinishAt?->timestamp ?? 'null' }})">{{ $this->durationValueLabel($hewanStartAt, $hewanFinishAt) }}</span>
                         </flux:table.cell>
                     </flux:table.row>

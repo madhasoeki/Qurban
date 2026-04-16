@@ -315,7 +315,7 @@ new #[Layout('layouts.dashboard')] #[Title('Packing')] class extends Component {
                             </div>
                         @else
                             <flux:text class="text-sm font-medium">{{ number_format((int) ($packingBags[$hewan->id] ?? $hewan->kantong_packing)) }} Kantong</flux:text>
-                            <flux:button size="sm" variant="ghost" class="w-full" wire:click="startEditPackingBags({{ $hewan->id }})">Edit Jumlah Kantong</flux:button>
+                            <flux:button size="sm" variant="filled" class="w-full" wire:click="startEditPackingBags({{ $hewan->id }})">Edit Jumlah Kantong</flux:button>
                         @endif
                     @endif
                 </div>
@@ -377,7 +377,7 @@ new #[Layout('layouts.dashboard')] #[Title('Packing')] class extends Component {
                                         <flux:button size="sm" variant="ghost" wire:click="cancelEditPackingBags({{ $hewan->id }})">Batal</flux:button>
                                     @else
                                         <flux:text class="text-sm font-medium">{{ number_format((int) ($packingBags[$hewan->id] ?? $hewan->kantong_packing)) }} Kantong</flux:text>
-                                        <flux:button size="sm" variant="ghost" wire:click="startEditPackingBags({{ $hewan->id }})">Edit Jumlah Kantong</flux:button>
+                                        <flux:button size="sm" variant="filled" wire:click="startEditPackingBags({{ $hewan->id }})">Edit Jumlah Kantong</flux:button>
                                     @endif
                                 @endif
                             </div>

@@ -134,7 +134,7 @@ new #[Title('Manage Sohibul')] class extends Component {
     }
 }; ?>
 
-<section class="w-full p-6 space-y-6">
+<section class="w-full space-y-6">
     <div class="flex items-center justify-between">
         <div>
             <flux:heading size="xl">{{ __('Sohibul') }}</flux:heading>
